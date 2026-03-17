@@ -4,7 +4,7 @@
 **License:** MIT  
 **Repository:** `ninjas1337/Pi-From-A-Sliding-Ruler-On-A-Parabola`
 
-https://github.com/ninjas1337/Pi-From-A-Sliding-Ruler-On-A-Parabola
+https://ninjas1337.github.io/Pi-From-A-Sliding-Ruler-On-A-Parabola
 
 ---
 
