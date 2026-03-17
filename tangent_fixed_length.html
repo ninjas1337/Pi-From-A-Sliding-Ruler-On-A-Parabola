@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fixed-Length Tangent Sweep on F(x) = x²/2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #c9d1d9;
+    font-family: 'IBM Plex Mono', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 100vh; padding: 1.2rem;
+  }
+  h1 { font-family: 'Source Serif 4', serif; font-weight: 400; font-size: 1.35rem; color: #e6edf3; margin-bottom: 0.15rem; }
+  .subtitle { font-size: 0.74rem; color: #6e7681; margin-bottom: 1rem; font-family: 'Source Serif 4', serif; font-style: italic; text-align: center; max-width: 520px; line-height: 1.5; }
+
+  .controls { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.5rem; flex-wrap: wrap; justify-content: center; }
+  .controls label { font-size: 0.74rem; color: #8b949e; }
+  .controls input[type="range"] { -webkit-appearance: none; width: 170px; height: 4px; background: #21262d; border-radius: 2px; outline: none; }
+  .controls input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #f0883e; border-radius: 50%; cursor: pointer; }
+  .val-display { font-size: 0.8rem; color: #f0883e; min-width: 3em; text-align: center; }
+
+  .stats { display: flex; gap: 1.2rem; margin-bottom: 0.6rem; font-size: 0.76rem; flex-wrap: wrap; justify-content: center; }
+  .stat { color: #8b949e; } .stat span { font-weight: 600; }
+
+  canvas { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; cursor: crosshair; }
+
+  .legend { display: flex; gap: 1rem; margin-top: 0.7rem; font-size: 0.68rem; flex-wrap: wrap; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 0.3rem; color: #8b949e; }
+  .legend-swatch { width: 16px; height: 3px; border-radius: 1px; }
+
+  .area-display { margin-top: 0.6rem; font-size: 0.85rem; color: #7ee787; font-family: 'Source Serif 4', serif; text-align: center; }
+  .math-note { margin-top: 0.5rem; font-size: 0.72rem; color: #6e7681; font-family: 'Source Serif 4', serif; text-align: center; max-width: 560px; line-height: 1.6; }
+  .info { margin-top: 0.6rem; font-size: 0.66rem; color: #484f58; text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Fixed-Length Tangent Sweep</h1>
+<p class="subtitle">Tangent has Euclidean length = 1 in each direction from contact on F(x) = x²/2</p>
+
+<div class="controls">
+  <label>Sweep from</label>
+  <input type="range" id="sliderA" min="-4" max="4" step="0.05" value="-3">
+  <span class="val-display" id="valA">-3.00</span>
+  <label>to</label>
+  <input type="range" id="sliderB" min="-4" max="4" step="0.05" value="3">
+  <span class="val-display" id="valB">3.00</span>
+</div>
+
+<div class="controls">
+  <label>Show at x₀</label>
+  <input type="range" id="sliderX0" min="-4" max="4" step="0.05" value="1.5">
+  <span class="val-display" id="valX0">1.50</span>
+  <label style="margin-left:0.5rem;">Animate</label>
+  <input type="range" id="sliderSpeed" min="0" max="3" step="0.1" value="0">
+  <span class="val-display" id="valSpeed" style="color:#8b949e;min-width:2em;">off</span>
+</div>
+
+<div id="statsRow" class="stats"></div>
+
+<canvas id="graph" width="640" height="540"></canvas>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#d2a8ff;"></div>F(x) = x²/2</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f0883e;"></div>Tangent (length 1 each way)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f85149;"></div>Left tip trace</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#7ee787;"></div>Right tip trace</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:rgba(240,136,62,0.12); height:10px;"></div>Swept area</div>
+</div>
+
+<div class="area-display" id="areaDisplay"></div>
+<div class="math-note" id="mathNote"></div>
+<p class="info">Adjust sweep bounds & contact point · Animate to watch · Scroll to zoom · Drag to pan</p>
+
+<script>
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+const sliderA = document.getElementById('sliderA');
+const sliderB = document.getElementById('sliderB');
+const sliderX0 = document.getElementById('sliderX0');
+const sliderSpeed = document.getElementById('sliderSpeed');
+const valAEl = document.getElementById('valA');
+const valBEl = document.getElementById('valB');
+const valX0El = document.getElementById('valX0');
+const valSpeedEl = document.getElementById('valSpeed');
+const areaDisplayEl = document.getElementById('areaDisplay');
+const mathNoteEl = document.getElementById('mathNote');
+const statsRowEl = document.getElementById('statsRow');
+
+let viewCenterX = 0, viewCenterY = 2.5;
+let scale = 58;
+let isDragging = false, dragStartX, dragStartY, dragViewX, dragViewY;
+let animTime = 0, animRunning = false, lastFrameTime = 0;
+
+function toSX(x) { return canvas.width / 2 + (x - viewCenterX) * scale; }
+function toSY(y) { return canvas.height / 2 - (y - viewCenterY) * scale; }
+function toMX(sx) { return viewCenterX + (sx - canvas.width / 2) / scale; }
+function toMY(sy) { return viewCenterY - (sy - canvas.height / 2) / scale; }
+
+function niceStep(range) {
+  const rough = range / 8;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  if (norm < 1.5) return mag;
+  if (norm < 3.5) return 2 * mag;
+  if (norm < 7.5) return 5 * mag;
+  return 10 * mag;
+}
+
+function F(x) { return x * x / 2; }
+
+// At contact x0, slope m = x0
+// Unit tangent: (1, x0) / sqrt(1 + x0^2)
+// Tips at ±1 Euclidean from contact:
+function leftTip(x0) {
+  const s = Math.sqrt(1 + x0 * x0);
+  return { x: x0 - 1 / s, y: F(x0) - x0 / s };
+}
+function rightTip(x0) {
+  const s = Math.sqrt(1 + x0 * x0);
+  return { x: x0 + 1 / s, y: F(x0) + x0 / s };
+}
+
+// Compute swept area numerically
+// The swept region is the union of all tangent segments as x0 goes from a to b
+// At each x-column, find the min and max y over all tangent segments passing through that x
+// A tangent at x0 passes through x if |x - x0| <= 1/sqrt(1+x0^2)
+// i.e. x0 is a contact point whose tangent segment reaches x
+// y on that tangent: y = x0*(x - x0) + x0^2/2
+
+function computeSweptArea(a, b, resolution) {
+  // Find x-range covered by any tangent in [a,b]
+  const leftmost = leftTip(a).x < leftTip(b).x ? leftTip(a).x : leftTip(b).x;
+  const rightmost = rightTip(a).x > rightTip(b).x ? rightTip(a).x : rightTip(b).x;
+  // Also check endpoints
+  let xLo = Math.min(leftmost, leftTip(a).x, leftTip(b).x) - 0.1;
+  let xHi = Math.max(rightmost, rightTip(a).x, rightTip(b).x) + 0.1;
+
+  // For each x0 in [a,b], tangent extends from x0 - 1/sqrt(1+x0^2) to x0 + 1/sqrt(1+x0^2)
+  // At column x, the tangent from x0 gives y = x0*(x-x0) + x0^2/2 = x*x0 - x0^2/2
+  // This is a downward parabola in x0! So for fixed x, y(x0) = -x0^2/2 + x*x0 = -(x0 - x)^2/2 + x^2/2
+  // Max at x0 = x (which is the curve F(x) itself), min at the boundary x0 values
+
+  const n = resolution || 500;
+  const dx = (xHi - xLo) / n;
+  let area = 0;
+
+  for (let i = 0; i <= n; i++) {
+    const x = xLo + i * dx;
+
+    // Find which x0 values in [a,b] have tangent reaching x
+    // Condition: x0 - 1/sqrt(1+x0^2) <= x <= x0 + 1/sqrt(1+x0^2)
+    // Easier: sample x0 in [a,b] and find y min/max
+    let yMin = Infinity, yMax = -Infinity;
+    let found = false;
+
+    const m = 300;
+    const dx0 = (b - a) / m;
+    for (let j = 0; j <= m; j++) {
+      const x0 = a + j * dx0;
+      const s = Math.sqrt(1 + x0 * x0);
+      const reach = 1 / s;
+      if (x >= x0 - reach && x <= x0 + reach) {
+        const y = x0 * (x - x0) + x0 * x0 / 2;
+        if (y < yMin) yMin = y;
+        if (y > yMax) yMax = y;
+        found = true;
+      }
+    }
+
+    if (found && yMax > yMin) {
+      area += (yMax - yMin) * dx;
+    }
+  }
+
+  return area;
+}
+
+// For drawing the envelope traces, generate arrays of tip positions
+function generateTrace(a, b, n, tipFn) {
+  const pts = [];
+  const dt = (b - a) / n;
+  for (let i = 0; i <= n; i++) {
+    const x0 = a + i * dt;
+    pts.push(tipFn(x0));
+  }
+  return pts;
+}
+
+function draw() {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const xMin = toMX(0), xMax = toMX(w);
+  const yMin = toMY(h), yMax = toMY(0);
+  const step = niceStep(xMax - xMin);
+  const minorStep = step / 5;
+
+  // Minor grid
+  ctx.strokeStyle = '#161b22'; ctx.lineWidth = 0.5;
+  for (let x = Math.floor(xMin / minorStep) * minorStep; x <= xMax; x += minorStep) {
+    const sx = toSX(x); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+  }
+  for (let y = Math.floor(yMin / minorStep) * minorStep; y <= yMax; y += minorStep) {
+    const sy = toSY(y); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+  }
+  // Major grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.8;
+  for (let x = Math.floor(xMin / step) * step; x <= xMax; x += step) {
+    const sx = toSX(x); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+  }
+  for (let y = Math.floor(yMin / step) * step; y <= yMax; y += step) {
+    const sy = toSY(y); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+  }
+  // Axes
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  const ox = toSX(0), oy = toSY(0);
+  if (oy >= 0 && oy <= h) { ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(w, oy); ctx.stroke(); }
+  if (ox >= 0 && ox <= w) { ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, h); ctx.stroke(); }
+  // Tick labels
+  ctx.fillStyle = '#484f58'; ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let x = Math.floor(xMin / step) * step; x <= xMax; x += step) {
+    if (Math.abs(x) < step * 0.01) continue;
+    ctx.fillText(Number(x.toPrecision(4)), toSX(x), Math.max(0, Math.min(h - 14, oy + 5)));
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let y = Math.floor(yMin / step) * step; y <= yMax; y += step) {
+    if (Math.abs(y) < step * 0.01) continue;
+    ctx.fillText(Number(y.toPrecision(4)), Math.max(28, Math.min(w, ox - 6)), toSY(y));
+  }
+
+  const a = parseFloat(sliderA.value);
+  const b = parseFloat(sliderB.value);
+  const sweepLo = Math.min(a, b), sweepHi = Math.max(a, b);
+  const x0 = parseFloat(sliderX0.value);
+
+  // Draw ghost tangent lines across the sweep (faint)
+  ctx.strokeStyle = 'rgba(240, 136, 62, 0.06)';
+  ctx.lineWidth = 1;
+  const ghostN = 80;
+  for (let i = 0; i <= ghostN; i++) {
+    const gx0 = sweepLo + (sweepHi - sweepLo) * i / ghostN;
+    const lt = leftTip(gx0);
+    const rt = rightTip(gx0);
+    ctx.beginPath();
+    ctx.moveTo(toSX(lt.x), toSY(lt.y));
+    ctx.lineTo(toSX(rt.x), toSY(rt.y));
+    ctx.stroke();
+  }
+
+  // Draw the swept region filled
+  // Upper boundary: the curve F(x) (tangent touches curve, so curve is always the top)
+  // Lower boundary: the envelope of tangent tips
+  // We'll compute this by sampling
+  const envN = 400;
+  const leftPts = generateTrace(sweepLo, sweepHi, envN, leftTip);
+  const rightPts = generateTrace(sweepLo, sweepHi, envN, rightTip);
+
+  // Fill swept region: outline is rightTrace → curve back → leftTrace → curve back
+  // Actually the swept region is bounded by:
+  // - The left tip trace (going from a's left tip to b's left tip)
+  // - The bottom of the curve between those
+  // - The right tip trace
+  // - The top of the curve
+  // It's complex, let's shade it by columns
+
+  // Shade the swept area column by column
+  const colSteps = 500;
+  const allTipsXmin = Math.min(leftTip(sweepLo).x, leftTip(sweepHi).x);
+  const allTipsXmax = Math.max(rightTip(sweepLo).x, rightTip(sweepHi).x);
+  const colXlo = allTipsXmin - 0.2;
+  const colXhi = allTipsXmax + 0.2;
+  const colDx = (colXhi - colXlo) / colSteps;
+
+  for (let ci = 0; ci < colSteps; ci++) {
+    const cx = colXlo + ci * colDx;
+    let cyMin = Infinity, cyMax = -Infinity;
+    let found = false;
+
+    // Sample x0 across sweep range
+    const sampleN = 200;
+    const sdx0 = (sweepHi - sweepLo) / sampleN;
+    for (let si = 0; si <= sampleN; si++) {
+      const sx0 = sweepLo + si * sdx0;
+      const s = Math.sqrt(1 + sx0 * sx0);
+      const reach = 1 / s;
+      if (cx >= sx0 - reach && cx <= sx0 + reach) {
+        const ty = sx0 * (cx - sx0) + sx0 * sx0 / 2;
+        if (ty < cyMin) cyMin = ty;
+        if (ty > cyMax) cyMax = ty;
+        found = true;
+      }
+    }
+
+    if (found && cyMax > cyMin) {
+      const sxL = toSX(cx);
+      const sxR = toSX(cx + colDx);
+      const syTop = toSY(cyMax);
+      const syBot = toSY(cyMin);
+      ctx.fillStyle = 'rgba(240, 136, 62, 0.12)';
+      ctx.fillRect(sxL, syTop, sxR - sxL, syBot - syTop);
+    }
+  }
+
+  // Left tip trace
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  leftPts.forEach((p, i) => {
+    const sx = toSX(p.x), sy = toSY(p.y);
+    if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+  });
+  ctx.stroke();
+
+  // Right tip trace
+  ctx.strokeStyle = '#7ee787'; ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  rightPts.forEach((p, i) => {
+    const sx = toSX(p.x), sy = toSY(p.y);
+    if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+  });
+  ctx.stroke();
+
+  // F(x) = x²/2
+  ctx.strokeStyle = '#d2a8ff'; ctx.lineWidth = 2.2;
+  ctx.shadowColor = '#d2a8ff'; ctx.shadowBlur = 5;
+  ctx.beginPath();
+  let first = true;
+  for (let sx = 0; sx <= w; sx += 1.5) {
+    const mx = toMX(sx);
+    if (first) { ctx.moveTo(sx, toSY(F(mx))); first = false; }
+    else ctx.lineTo(sx, toSY(F(mx)));
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Current tangent line (fixed length)
+  const lt = leftTip(x0);
+  const rt = rightTip(x0);
+  ctx.strokeStyle = '#f0883e'; ctx.lineWidth = 2.8;
+  ctx.shadowColor = '#f0883e'; ctx.shadowBlur = 5;
+  ctx.beginPath();
+  ctx.moveTo(toSX(lt.x), toSY(lt.y));
+  ctx.lineTo(toSX(rt.x), toSY(rt.y));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Contact point
+  ctx.beginPath();
+  ctx.arc(toSX(x0), toSY(F(x0)), 5.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#d2a8ff'; ctx.fill();
+  ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Left tip dot
+  ctx.beginPath();
+  ctx.arc(toSX(lt.x), toSY(lt.y), 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#f85149'; ctx.fill();
+  ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Right tip dot
+  ctx.beginPath();
+  ctx.arc(toSX(rt.x), toSY(rt.y), 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#7ee787'; ctx.fill();
+  ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Length indicator
+  ctx.fillStyle = '#f0883e';
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center';
+  const midLx = (lt.x + x0) / 2, midLy = (lt.y + F(x0)) / 2;
+  ctx.fillText('L=1', toSX(midLx), toSY(midLy) - 8);
+  const midRx = (rt.x + x0) / 2, midRy = (rt.y + F(x0)) / 2;
+  ctx.fillText('L=1', toSX(midRx), toSY(midRy) - 8);
+
+  // Slope info
+  const s0 = Math.sqrt(1 + x0 * x0);
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`slope = ${x0.toFixed(2)}  ·  Δx = ±${(1/s0).toFixed(3)}`, toSX(x0), toSY(F(x0)) - 18);
+
+  // Labels
+  ctx.font = 'italic 12px "Source Serif 4", serif'; ctx.textAlign = 'left';
+  const lx = xMax - (xMax - xMin) * 0.08;
+  const lsx = toSX(lx);
+  if (lsx < w - 90) {
+    ctx.fillStyle = '#d2a8ff';
+    ctx.fillText('F(x) = x²/2', lsx + 4, toSY(F(lx)) - 8);
+  }
+
+  // Compute area numerically
+  const sweptArea = computeSweptArea(sweepLo, sweepHi, 600);
+
+  // Update displays
+  valAEl.textContent = a.toFixed(2);
+  valBEl.textContent = b.toFixed(2);
+  valX0El.textContent = x0.toFixed(2);
+
+  areaDisplayEl.textContent = `Swept area ≈ ${sweptArea.toFixed(4)}`;
+
+  // The x-extent at x0 is 1/sqrt(1+x0^2) each way
+  // The tangent at fixed x: y(x0) = x*x0 - x0^2/2 → max at x0=x → y=x^2/2 = F(x)
+  // Width of ribbon at x0: 2/sqrt(1+x0^2)
+  // The analytical area of the ribbon integrand is more subtle since the
+  // vertical extent varies. Show the numerical result.
+
+  // Analytical note: integral of 1/(1+x0^2) from a to b = arctan(b) - arctan(a)
+  const analyticalEstimate = Math.atan(sweepHi) - Math.atan(sweepLo);
+  mathNoteEl.innerHTML =
+    `At x₀, tangent Δx = ±1/√(1+x₀²) · As slope grows, x-reach shrinks<br>` +
+    `Compare: arctan(${sweepHi.toFixed(1)}) − arctan(${sweepLo.toFixed(1)}) = ${analyticalEstimate.toFixed(4)}`;
+
+  statsRowEl.innerHTML =
+    `<div class="stat">x₀-reach: <span style="color:#f0883e;">±1/√(1+x₀²) = ±${(1/s0).toFixed(3)}</span></div>` +
+    `<div class="stat">Sweep: <span style="color:#58a6ff;">[${sweepLo.toFixed(1)}, ${sweepHi.toFixed(1)}]</span></div>`;
+}
+
+draw();
+
+sliderA.addEventListener('input', draw);
+sliderB.addEventListener('input', draw);
+sliderX0.addEventListener('input', draw);
+
+sliderSpeed.addEventListener('input', () => {
+  const speed = parseFloat(sliderSpeed.value);
+  valSpeedEl.textContent = speed > 0 ? speed.toFixed(1) : 'off';
+  if (speed > 0 && !animRunning) {
+    animRunning = true;
+    lastFrameTime = performance.now();
+    requestAnimationFrame(animate);
+  } else if (speed === 0) { animRunning = false; }
+});
+
+function animate(ts) {
+  if (!animRunning) return;
+  const speed = parseFloat(sliderSpeed.value);
+  const dt = (ts - lastFrameTime) / 1000;
+  lastFrameTime = ts;
+  animTime += dt * speed;
+  const a = parseFloat(sliderA.value), b = parseFloat(sliderB.value);
+  const mid = (a + b) / 2, amp = (b - a) / 2;
+  const x0 = mid + amp * Math.sin(animTime * 0.7);
+  sliderX0.value = x0.toFixed(2);
+  draw();
+  requestAnimationFrame(animate);
+}
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const mathX = toMX(mx), mathY = toMY(my);
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  scale = Math.max(5, Math.min(2000, scale * factor));
+  viewCenterX = mathX - (mx - canvas.width / 2) / scale;
+  viewCenterY = mathY + (my - canvas.height / 2) / scale;
+  draw();
+}, { passive: false });
+
+canvas.addEventListener('mousedown', e => {
+  isDragging = true;
+  const rect = canvas.getBoundingClientRect();
+  dragStartX = e.clientX - rect.left;
+  dragStartY = e.clientY - rect.top;
+  dragViewX = viewCenterX; dragViewY = viewCenterY;
+  canvas.style.cursor = 'grabbing';
+});
+canvas.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  viewCenterX = dragViewX - (mx - dragStartX) / scale;
+  viewCenterY = dragViewY + (my - dragStartY) / scale;
+  draw();
+});
+window.addEventListener('mouseup', () => { isDragging = false; canvas.style.cursor = 'crosshair'; });
+</script>
+</body>
+</html>
