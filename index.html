@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convergence to π — Fixed-Length Tangent Sweep</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #c9d1d9;
+    font-family: 'IBM Plex Mono', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; min-height: 100vh; padding: 1.2rem;
+  }
+  h1 { font-family: 'Source Serif 4', serif; font-weight: 400; font-size: 1.35rem; color: #e6edf3; margin-bottom: 0.15rem; }
+  .subtitle { font-size: 0.74rem; color: #6e7681; margin-bottom: 1rem; font-family: 'Source Serif 4', serif; font-style: italic; text-align: center; max-width: 600px; line-height: 1.5; }
+
+  .controls { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; flex-wrap: wrap; justify-content: center; }
+  .controls label { font-size: 0.74rem; color: #8b949e; }
+  .controls input[type="range"] { -webkit-appearance: none; width: 220px; height: 4px; background: #21262d; border-radius: 2px; outline: none; }
+  .controls input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #f0883e; border-radius: 50%; cursor: pointer; }
+  .val-display { font-size: 0.8rem; color: #f0883e; min-width: 4.5em; text-align: center; }
+
+  .result-box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 0.8rem 1.5rem; margin-bottom: 0.8rem; text-align: center;
+    min-width: 420px;
+  }
+  .result-main { font-size: 1.3rem; color: #7ee787; font-family: 'Source Serif 4', serif; margin-bottom: 0.3rem; }
+  .result-sub { font-size: 0.78rem; color: #8b949e; line-height: 1.5; }
+  .result-sub .pi { color: #d2a8ff; font-weight: 600; }
+  .result-sub .diff { color: #f0883e; }
+
+  canvas { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; }
+
+  .two-panel { display: flex; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; justify-content: center; }
+
+  .legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.66rem; flex-wrap: wrap; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 0.3rem; color: #8b949e; }
+  .legend-swatch { width: 14px; height: 3px; border-radius: 1px; }
+
+  .table-section { margin-top: 0.8rem; width: 100%; max-width: 600px; }
+  .table-section h2 { font-family: 'Source Serif 4', serif; font-weight: 400; font-size: 0.9rem; color: #e6edf3; margin-bottom: 0.4rem; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+  th { color: #8b949e; font-weight: 600; padding: 0.3rem 0.5rem; border-bottom: 1px solid #21262d; text-align: right; }
+  th:first-child { text-align: center; }
+  td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #161b22; text-align: right; color: #c9d1d9; }
+  td:first-child { text-align: center; color: #f0883e; }
+  td.area-val { color: #7ee787; }
+  td.diff-val { color: #f0883e; }
+  td.pi-val { color: #d2a8ff; }
+
+  .info { margin-top: 0.6rem; font-size: 0.64rem; color: #484f58; text-align: center; line-height: 1.5; max-width: 600px; }
+</style>
+</head>
+<body>
+
+<h1>Fixed-Length Tangent Sweep → π</h1>
+<p class="subtitle">A unit tangent (L=1 each way) slides along F(x) = x²/2 from −N to +N. The swept area converges to π.</p>
+
+<div class="controls">
+  <label>Sweep bound N (symmetric ±N)</label>
+  <input type="range" id="sliderN" min="0.5" max="100" step="0.5" value="5">
+  <span class="val-display" id="valN">±5.0</span>
+</div>
+
+<div class="result-box">
+  <div class="result-main" id="resultMain">Area ≈ 2.74680</div>
+  <div class="result-sub">
+    <span class="pi">π = 3.14159265...</span> &nbsp;·&nbsp;
+    <span class="diff" id="resultDiff">Δ = 0.39479</span> &nbsp;·&nbsp;
+    <span id="resultPct" style="color:#58a6ff;">87.4%</span>
+  </div>
+</div>
+
+<div class="two-panel">
+  <canvas id="graphSweep" width="380" height="320"></canvas>
+  <canvas id="graphConverge" width="380" height="320"></canvas>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#d2a8ff;"></div>F(x) = x²/2</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f0883e;"></div>Tangent (L=1)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:rgba(240,136,62,0.15); height:8px;"></div>Swept ribbon</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#7ee787;"></div>Area(N) curve</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#d2a8ff;"></div>π asymptote</div>
+</div>
+
+<div class="table-section">
+  <h2>Convergence Table: 2·arctan(N) → π</h2>
+  <table id="convTable">
+    <thead>
+      <tr><th>N</th><th>2·arctan(N)</th><th>π</th><th>Δ = π − 2·arctan(N)</th><th>% of π</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<p class="info">
+  The swept area = 2·arctan(N) because the tangent cluster maps to a polar integral of 1/(1+x₀²).<br>
+  As N → ∞, 2·arctan(N) → 2·(π/2) = π. The parabola has a finite area budget for a rigid tangent.
+</p>
+
+<script>
+const PI = Math.PI;
+const sliderN = document.getElementById('sliderN');
+const valNEl = document.getElementById('valN');
+const resultMainEl = document.getElementById('resultMain');
+const resultDiffEl = document.getElementById('resultDiff');
+const resultPctEl = document.getElementById('resultPct');
+
+const cSweep = document.getElementById('graphSweep');
+const ctxS = cSweep.getContext('2d');
+const cConv = document.getElementById('graphConverge');
+const ctxC = cConv.getContext('2d');
+
+// --- Convergence table ---
+function buildTable() {
+  const tbody = document.querySelector('#convTable tbody');
+  const Ns = [0.5, 1, 2, 3, 5, 10, 20, 50, 100, 500, 1000, 10000, 1e6];
+  tbody.innerHTML = '';
+  Ns.forEach(n => {
+    const area = 2 * Math.atan(n);
+    const diff = PI - area;
+    const pct = (area / PI * 100);
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${n >= 1000 ? n.toExponential(0) : n}</td>` +
+      `<td class="area-val">${area.toFixed(8)}</td>` +
+      `<td class="pi-val">${PI.toFixed(8)}</td>` +
+      `<td class="diff-val">${diff.toExponential(4)}</td>` +
+      `<td style="color:#58a6ff;">${pct.toFixed(6)}%</td>`;
+    tbody.appendChild(tr);
+  });
+}
+buildTable();
+
+// --- Sweep canvas (left) ---
+function F(x) { return x * x / 2; }
+
+function drawSweep(N) {
+  const w = cSweep.width, h = cSweep.height;
+  ctxS.clearRect(0, 0, w, h);
+
+  // Auto-scale view to show the sweep nicely
+  const viewN = Math.min(N, 12); // cap visual range
+  const padX = 1.5;
+  const xMin = -viewN - padX, xMax = viewN + padX;
+  const yMinM = -1, yMaxM = F(viewN) + 2;
+  const scaleX = w / (xMax - xMin);
+  const scaleY = h / (yMaxM - yMinM);
+  const sc = Math.min(scaleX, scaleY) * 0.85;
+  const cx = w / 2, cy = h * 0.85;
+
+  function toSX(x) { return cx + x * sc; }
+  function toSY(y) { return cy - y * sc; }
+
+  // Grid
+  ctxS.strokeStyle = '#161b22'; ctxS.lineWidth = 0.5;
+  const step = viewN <= 3 ? 1 : viewN <= 8 ? 2 : 5;
+  for (let x = Math.ceil(xMin / step) * step; x <= xMax; x += step) {
+    ctxS.beginPath(); ctxS.moveTo(toSX(x), 0); ctxS.lineTo(toSX(x), h); ctxS.stroke();
+  }
+  for (let y = Math.floor(yMinM / step) * step; y <= yMaxM; y += step) {
+    ctxS.beginPath(); ctxS.moveTo(0, toSY(y)); ctxS.lineTo(w, toSY(y)); ctxS.stroke();
+  }
+
+  // Axes
+  ctxS.strokeStyle = '#30363d'; ctxS.lineWidth = 1;
+  ctxS.beginPath(); ctxS.moveTo(0, toSY(0)); ctxS.lineTo(w, toSY(0)); ctxS.stroke();
+  ctxS.beginPath(); ctxS.moveTo(toSX(0), 0); ctxS.lineTo(toSX(0), h); ctxS.stroke();
+
+  // Ghost tangent lines
+  ctxS.strokeStyle = 'rgba(240,136,62,0.05)'; ctxS.lineWidth = 1;
+  const ghostN = 60;
+  const effN = Math.min(N, viewN);
+  for (let i = 0; i <= ghostN; i++) {
+    const x0 = -effN + 2 * effN * i / ghostN;
+    const s = Math.sqrt(1 + x0 * x0);
+    const dx = 1 / s, dy = x0 / s;
+    ctxS.beginPath();
+    ctxS.moveTo(toSX(x0 - dx), toSY(F(x0) - dy));
+    ctxS.lineTo(toSX(x0 + dx), toSY(F(x0) + dy));
+    ctxS.stroke();
+  }
+
+  // Swept ribbon (shaded)
+  // Upper: F(x), Lower: envelope = min tangent y at each column
+  // For the ribbon, we shade between the curve and the lower envelope
+  const colN = 300;
+  const colXlo = -effN - 1, colXhi = effN + 1;
+  const colDx = (colXhi - colXlo) / colN;
+
+  for (let ci = 0; ci < colN; ci++) {
+    const cx_ = colXlo + ci * colDx;
+    let cyMin = Infinity, cyMax = -Infinity;
+    let found = false;
+    const sampleN = 150;
+    const sdx0 = 2 * effN / sampleN;
+    for (let si = 0; si <= sampleN; si++) {
+      const sx0 = -effN + si * sdx0;
+      const s = Math.sqrt(1 + sx0 * sx0);
+      const reach = 1 / s;
+      if (cx_ >= sx0 - reach && cx_ <= sx0 + reach) {
+        const ty = sx0 * (cx_ - sx0) + sx0 * sx0 / 2;
+        if (ty < cyMin) cyMin = ty;
+        if (ty > cyMax) cyMax = ty;
+        found = true;
+      }
+    }
+    if (found && cyMax > cyMin) {
+      const sxL = toSX(cx_);
+      const sxR = toSX(cx_ + colDx);
+      ctxS.fillStyle = 'rgba(240,136,62,0.12)';
+      ctxS.fillRect(sxL, toSY(cyMax), sxR - sxL, toSY(cyMin) - toSY(cyMax));
+    }
+  }
+
+  // F(x) curve
+  ctxS.strokeStyle = '#d2a8ff'; ctxS.lineWidth = 2;
+  ctxS.beginPath();
+  for (let sx = 0; sx <= w; sx += 1) {
+    const mx = (sx - cx) / sc;
+    const my = F(mx);
+    if (sx === 0) ctxS.moveTo(sx, toSY(my));
+    else ctxS.lineTo(sx, toSY(my));
+  }
+  ctxS.stroke();
+
+  // Current tangent at a sample point
+  const x0demo = effN * 0.6;
+  const s0 = Math.sqrt(1 + x0demo * x0demo);
+  const tdx = 1 / s0, tdy = x0demo / s0;
+  ctxS.strokeStyle = '#f0883e'; ctxS.lineWidth = 2.5;
+  ctxS.shadowColor = '#f0883e'; ctxS.shadowBlur = 4;
+  ctxS.beginPath();
+  ctxS.moveTo(toSX(x0demo - tdx), toSY(F(x0demo) - tdy));
+  ctxS.lineTo(toSX(x0demo + tdx), toSY(F(x0demo) + tdy));
+  ctxS.stroke();
+  ctxS.shadowBlur = 0;
+
+  // Contact dot
+  ctxS.beginPath();
+  ctxS.arc(toSX(x0demo), toSY(F(x0demo)), 4, 0, Math.PI * 2);
+  ctxS.fillStyle = '#d2a8ff'; ctxS.fill();
+
+  // Label
+  ctxS.fillStyle = '#8b949e'; ctxS.font = '10px "IBM Plex Mono", monospace';
+  ctxS.textAlign = 'center';
+  ctxS.fillText(`sweep [−${effN.toFixed(0)}, +${effN.toFixed(0)}]`, w / 2, 16);
+}
+
+// --- Convergence canvas (right) ---
+function drawConvergence(N) {
+  const w = cConv.width, h = cConv.height;
+  ctxC.clearRect(0, 0, w, h);
+
+  const pad = { l: 50, r: 20, t: 25, b: 35 };
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+  // X axis: 0 to max(N, 10) — use log scale for large N
+  const useLog = N > 20;
+  const xMaxPlot = Math.max(N * 1.1, 10);
+  const yMinPlot = 0, yMaxPlot = PI * 1.15;
+
+  function toX(n) {
+    if (useLog) {
+      const logMin = Math.log10(0.5);
+      const logMax = Math.log10(xMaxPlot);
+      return pad.l + pw * (Math.log10(Math.max(n, 0.5)) - logMin) / (logMax - logMin);
+    }
+    return pad.l + pw * n / xMaxPlot;
+  }
+  function toY(y) { return pad.t + ph * (1 - (y - yMinPlot) / (yMaxPlot - yMinPlot)); }
+
+  // Grid
+  ctxC.strokeStyle = '#161b22'; ctxC.lineWidth = 0.5;
+  [0.5, 1, 1.5, 2, 2.5, PI].forEach(y => {
+    ctxC.beginPath(); ctxC.moveTo(pad.l, toY(y)); ctxC.lineTo(w - pad.r, toY(y)); ctxC.stroke();
+  });
+
+  // π asymptote
+  ctxC.strokeStyle = '#d2a8ff'; ctxC.lineWidth = 1.5;
+  ctxC.setLineDash([6, 4]);
+  ctxC.beginPath(); ctxC.moveTo(pad.l, toY(PI)); ctxC.lineTo(w - pad.r, toY(PI)); ctxC.stroke();
+  ctxC.setLineDash([]);
+  ctxC.fillStyle = '#d2a8ff'; ctxC.font = '12px "Source Serif 4", serif';
+  ctxC.textAlign = 'right';
+  ctxC.fillText('π', pad.l - 6, toY(PI) + 4);
+
+  // Axes
+  ctxC.strokeStyle = '#30363d'; ctxC.lineWidth = 1;
+  ctxC.beginPath(); ctxC.moveTo(pad.l, pad.t); ctxC.lineTo(pad.l, h - pad.b); ctxC.lineTo(w - pad.r, h - pad.b); ctxC.stroke();
+
+  // Axis labels
+  ctxC.fillStyle = '#484f58'; ctxC.font = '9px "IBM Plex Mono", monospace';
+  ctxC.textAlign = 'center'; ctxC.textBaseline = 'top';
+
+  if (useLog) {
+    [1, 2, 5, 10, 20, 50, 100].filter(v => v <= xMaxPlot).forEach(v => {
+      ctxC.fillText(v, toX(v), h - pad.b + 4);
+    });
+  } else {
+    const step = xMaxPlot <= 10 ? 2 : 5;
+    for (let v = step; v <= xMaxPlot; v += step) {
+      ctxC.fillText(v, toX(v), h - pad.b + 4);
+    }
+  }
+  ctxC.textAlign = 'right'; ctxC.textBaseline = 'middle';
+  [0, 1, 2, 3].forEach(v => {
+    ctxC.fillText(v.toFixed(0), pad.l - 4, toY(v));
+  });
+
+  // Area(n) = 2*arctan(n) curve
+  ctxC.strokeStyle = '#7ee787'; ctxC.lineWidth = 2.5;
+  ctxC.beginPath();
+  const steps = 500;
+  for (let i = 0; i <= steps; i++) {
+    let n;
+    if (useLog) {
+      n = 0.5 * Math.pow(xMaxPlot / 0.5, i / steps);
+    } else {
+      n = xMaxPlot * i / steps;
+    }
+    const area = 2 * Math.atan(n);
+    const sx = toX(n), sy = toY(area);
+    if (i === 0) ctxC.moveTo(sx, sy);
+    else ctxC.lineTo(sx, sy);
+  }
+  ctxC.stroke();
+
+  // Current N marker
+  const curArea = 2 * Math.atan(N);
+  const markerX = toX(N), markerY = toY(curArea);
+  ctxC.beginPath();
+  ctxC.arc(markerX, markerY, 6, 0, Math.PI * 2);
+  ctxC.fillStyle = '#f0883e'; ctxC.fill();
+  ctxC.strokeStyle = '#0d1117'; ctxC.lineWidth = 2; ctxC.stroke();
+
+  // Dashed lines from marker to axes
+  ctxC.setLineDash([3, 3]); ctxC.strokeStyle = '#f0883e'; ctxC.lineWidth = 1;
+  ctxC.beginPath(); ctxC.moveTo(markerX, markerY); ctxC.lineTo(markerX, h - pad.b); ctxC.stroke();
+  ctxC.beginPath(); ctxC.moveTo(markerX, markerY); ctxC.lineTo(pad.l, markerY); ctxC.stroke();
+  ctxC.setLineDash([]);
+
+  // Gap annotation
+  const gapY = toY(PI);
+  if (markerY - gapY > 8) {
+    ctxC.strokeStyle = 'rgba(248,81,73,0.5)'; ctxC.lineWidth = 2;
+    ctxC.beginPath(); ctxC.moveTo(markerX + 12, gapY); ctxC.lineTo(markerX + 12, markerY); ctxC.stroke();
+    ctxC.fillStyle = '#f85149'; ctxC.font = '9px "IBM Plex Mono", monospace';
+    ctxC.textAlign = 'left';
+    ctxC.fillText(`Δ=${(PI - curArea).toFixed(4)}`, markerX + 17, (gapY + markerY) / 2 + 3);
+  }
+
+  // Title
+  ctxC.fillStyle = '#8b949e'; ctxC.font = '10px "IBM Plex Mono", monospace';
+  ctxC.textAlign = 'center';
+  ctxC.fillText('Area(N) = 2·arctan(N) → π', w / 2, 14);
+
+  // N label
+  ctxC.fillStyle = '#6e7681'; ctxC.font = '9px "IBM Plex Mono", monospace';
+  ctxC.textAlign = 'center'; ctxC.textBaseline = 'top';
+  ctxC.fillText(useLog ? 'N (log scale)' : 'N', w / 2, h - 10);
+}
+
+function update() {
+  const N = parseFloat(sliderN.value);
+  valNEl.textContent = `±${N.toFixed(1)}`;
+
+  const area = 2 * Math.atan(N);
+  const diff = PI - area;
+  const pct = area / PI * 100;
+
+  resultMainEl.textContent = `Area ≈ ${area.toFixed(8)}`;
+  resultDiffEl.textContent = `Δ = ${diff < 0.0001 ? diff.toExponential(4) : diff.toFixed(6)}`;
+  resultPctEl.textContent = `${pct.toFixed(4)}% of π`;
+
+  if (pct > 99.9) {
+    resultMainEl.style.color = '#d2a8ff';
+  } else if (pct > 99) {
+    resultMainEl.style.color = '#7ee787';
+  } else {
+    resultMainEl.style.color = '#7ee787';
+  }
+
+  drawSweep(N);
+  drawConvergence(N);
+}
+
+update();
+sliderN.addEventListener('input', update);
+</script>
+</body>
+</html>
