@@ -16,6 +16,12 @@ The result is classical in its ingredients but is presented here as a self-conta
 
 ---
 
+## Why $f(x) = x^2$?
+
+Occam's razor. The parabola $y = x^2$ is the simplest polynomial whose tangent line rotates: it has non-zero curvature everywhere, its derivative $f'(x) = 2x$ covers the entire real line, and its curvature $\kappa$ is integrable over $\mathbb{R}$. No simpler function suffices — a linear function has constant slope and sweeps no angle at all; higher-degree polynomials introduce unnecessary complexity. The parabola is the minimal construction that produces a full half-turn.
+
+---
+
 ## The Construction
 
 Let $f : \mathbb{R} \to \mathbb{R}$ be defined by $f(x) = x^2$. The tangent line to the parabola at the point $(x_0,\, x_0^2)$ has slope
@@ -107,8 +113,10 @@ All are manifestations of the same underlying fact: the residue of $1/(1+z^2)$ a
 |---|---|
 | `README.md` | This document |
 | `LICENSE` | MIT License |
+| `index.html` | Interactive convergence visualization — sweep controls, swept-area ribbon, convergence graph, and table showing arctan(b) − arctan(a) → π |
+| `tangent_fixed_length.html` | Interactive tangent sweep explorer — adjustable sweep bounds, animated contact point, tip traces, zoom/pan, and numerical area display |
 
-*Visualization and formal paper forthcoming.*
+> **Note on the visualizations:** The interactive files use $f(x) = x^2/2$ (slope $= x_0$, integral $\int 1/(1+x_0^2)\,dx$) rather than $f(x) = x^2$ (slope $= 2x_0$). The factor of 2 is absorbed into the parametrisation; the swept area converges to $\pi$ in both cases. The halved form is chosen for the visualisations because the unit tangent direction vector simplifies to $(1, x_0)/\sqrt{1+x_0^2}$, making the fixed-length tangent segment geometry cleaner to render.
 
 ---
 
