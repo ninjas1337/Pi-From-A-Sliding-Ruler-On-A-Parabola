@@ -25,7 +25,7 @@
   .stats { display: flex; gap: 1.2rem; margin-bottom: 0.6rem; font-size: 0.76rem; flex-wrap: wrap; justify-content: center; }
   .stat { color: #8b949e; } .stat span { font-weight: 600; }
 
-  canvas { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; cursor: crosshair; }
+  canvas { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; cursor: crosshair; width: 640px; height: 540px; }
 
   .legend { display: flex; gap: 1rem; margin-top: 0.7rem; font-size: 0.68rem; flex-wrap: wrap; justify-content: center; }
   .legend-item { display: flex; align-items: center; gap: 0.3rem; color: #8b949e; }
@@ -61,14 +61,14 @@
 
 <div id="statsRow" class="stats"></div>
 
-<canvas id="graph" width="640" height="540"></canvas>
+<canvas id="graph"></canvas>
 
 <div class="legend">
   <div class="legend-item"><div class="legend-swatch" style="background:#d2a8ff;"></div>F(x) = x²/2</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#f0883e;"></div>Tangent (length 1 each way)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#f85149;"></div>Left tip trace</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#7ee787;"></div>Right tip trace</div>
-  <div class="legend-item"><div class="legend-swatch" style="background:rgba(240,136,62,0.12); height:10px;"></div>Swept area</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:rgba(240,136,62,0.3); height:10px;"></div>Swept area</div>
 </div>
 
 <div class="area-display" id="areaDisplay"></div>
@@ -78,6 +78,20 @@
 <script>
 const canvas = document.getElementById('graph');
 const ctx = canvas.getContext('2d');
+
+// --- DPR-aware canvas ---
+const CSS_W = 640, CSS_H = 540;
+function setupCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = CSS_W * dpr;
+  canvas.height = CSS_H * dpr;
+  canvas.style.width = CSS_W + 'px';
+  canvas.style.height = CSS_H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+setupCanvas();
+window.addEventListener('resize', () => { setupCanvas(); draw(); });
+
 const sliderA = document.getElementById('sliderA');
 const sliderB = document.getElementById('sliderB');
 const sliderX0 = document.getElementById('sliderX0');
@@ -95,10 +109,11 @@ let scale = 58;
 let isDragging = false, dragStartX, dragStartY, dragViewX, dragViewY;
 let animTime = 0, animRunning = false, lastFrameTime = 0;
 
-function toSX(x) { return canvas.width / 2 + (x - viewCenterX) * scale; }
-function toSY(y) { return canvas.height / 2 - (y - viewCenterY) * scale; }
-function toMX(sx) { return viewCenterX + (sx - canvas.width / 2) / scale; }
-function toMY(sy) { return viewCenterY - (sy - canvas.height / 2) / scale; }
+// Use CSS dimensions for math mapping (DPR is handled by the transform)
+function toSX(x) { return CSS_W / 2 + (x - viewCenterX) * scale; }
+function toSY(y) { return CSS_H / 2 - (y - viewCenterY) * scale; }
+function toMX(sx) { return viewCenterX + (sx - CSS_W / 2) / scale; }
+function toMY(sy) { return viewCenterY - (sy - CSS_H / 2) / scale; }
 
 function niceStep(range) {
   const rough = range / 8;
@@ -112,9 +127,6 @@ function niceStep(range) {
 
 function F(x) { return x * x / 2; }
 
-// At contact x0, slope m = x0
-// Unit tangent: (1, x0) / sqrt(1 + x0^2)
-// Tips at ±1 Euclidean from contact:
 function leftTip(x0) {
   const s = Math.sqrt(1 + x0 * x0);
   return { x: x0 - 1 / s, y: F(x0) - x0 / s };
@@ -124,41 +136,23 @@ function rightTip(x0) {
   return { x: x0 + 1 / s, y: F(x0) + x0 / s };
 }
 
-// Compute swept area numerically
-// The swept region is the union of all tangent segments as x0 goes from a to b
-// At each x-column, find the min and max y over all tangent segments passing through that x
-// A tangent at x0 passes through x if |x - x0| <= 1/sqrt(1+x0^2)
-// i.e. x0 is a contact point whose tangent segment reaches x
-// y on that tangent: y = x0*(x - x0) + x0^2/2
-
+// Numerical swept area
 function computeSweptArea(a, b, resolution) {
-  // Find x-range covered by any tangent in [a,b]
-  const leftmost = leftTip(a).x < leftTip(b).x ? leftTip(a).x : leftTip(b).x;
-  const rightmost = rightTip(a).x > rightTip(b).x ? rightTip(a).x : rightTip(b).x;
-  // Also check endpoints
-  let xLo = Math.min(leftmost, leftTip(a).x, leftTip(b).x) - 0.1;
-  let xHi = Math.max(rightmost, rightTip(a).x, rightTip(b).x) + 0.1;
+  const lt_a = leftTip(a), lt_b = leftTip(b);
+  const rt_a = rightTip(a), rt_b = rightTip(b);
+  let xLo = Math.min(lt_a.x, lt_b.x) - 0.1;
+  let xHi = Math.max(rt_a.x, rt_b.x) + 0.1;
 
-  // For each x0 in [a,b], tangent extends from x0 - 1/sqrt(1+x0^2) to x0 + 1/sqrt(1+x0^2)
-  // At column x, the tangent from x0 gives y = x0*(x-x0) + x0^2/2 = x*x0 - x0^2/2
-  // This is a downward parabola in x0! So for fixed x, y(x0) = -x0^2/2 + x*x0 = -(x0 - x)^2/2 + x^2/2
-  // Max at x0 = x (which is the curve F(x) itself), min at the boundary x0 values
-
-  const n = resolution || 500;
+  const n = resolution || 400;
   const dx = (xHi - xLo) / n;
   let area = 0;
 
+  const m = 200;
+  const dx0 = (b - a) / m;
   for (let i = 0; i <= n; i++) {
     const x = xLo + i * dx;
-
-    // Find which x0 values in [a,b] have tangent reaching x
-    // Condition: x0 - 1/sqrt(1+x0^2) <= x <= x0 + 1/sqrt(1+x0^2)
-    // Easier: sample x0 in [a,b] and find y min/max
     let yMin = Infinity, yMax = -Infinity;
     let found = false;
-
-    const m = 300;
-    const dx0 = (b - a) / m;
     for (let j = 0; j <= m; j++) {
       const x0 = a + j * dx0;
       const s = Math.sqrt(1 + x0 * x0);
@@ -170,28 +164,26 @@ function computeSweptArea(a, b, resolution) {
         found = true;
       }
     }
-
     if (found && yMax > yMin) {
       area += (yMax - yMin) * dx;
     }
   }
-
   return area;
 }
 
-// For drawing the envelope traces, generate arrays of tip positions
 function generateTrace(a, b, n, tipFn) {
   const pts = [];
   const dt = (b - a) / n;
   for (let i = 0; i <= n; i++) {
-    const x0 = a + i * dt;
-    pts.push(tipFn(x0));
+    pts.push(tipFn(a + i * dt));
   }
   return pts;
 }
 
+let rafId = null;
+
 function draw() {
-  const w = canvas.width, h = canvas.height;
+  const w = CSS_W, h = CSS_H;
   ctx.clearRect(0, 0, w, h);
 
   const xMin = toMX(0), xMax = toMX(w);
@@ -237,53 +229,28 @@ function draw() {
   const b = parseFloat(sliderB.value);
   const sweepLo = Math.min(a, b), sweepHi = Math.max(a, b);
   const x0 = parseFloat(sliderX0.value);
+  const sweepRange = sweepHi - sweepLo;
 
-  // Draw ghost tangent lines across the sweep (faint)
-  ctx.strokeStyle = 'rgba(240, 136, 62, 0.06)';
-  ctx.lineWidth = 1;
-  const ghostN = 80;
-  for (let i = 0; i <= ghostN; i++) {
-    const gx0 = sweepLo + (sweepHi - sweepLo) * i / ghostN;
-    const lt = leftTip(gx0);
-    const rt = rightTip(gx0);
-    ctx.beginPath();
-    ctx.moveTo(toSX(lt.x), toSY(lt.y));
-    ctx.lineTo(toSX(rt.x), toSY(rt.y));
-    ctx.stroke();
-  }
+  // --- Swept area fill (column-by-column, optimized) ---
+  // Adaptive: fewer columns for wider sweeps, more for narrow
+  const colSteps = Math.min(350, Math.max(120, Math.round(200 + sweepRange * 20)));
+  const sampleN = Math.min(180, Math.max(60, Math.round(80 + sweepRange * 15)));
 
-  // Draw the swept region filled
-  // Upper boundary: the curve F(x) (tangent touches curve, so curve is always the top)
-  // Lower boundary: the envelope of tangent tips
-  // We'll compute this by sampling
-  const envN = 400;
-  const leftPts = generateTrace(sweepLo, sweepHi, envN, leftTip);
-  const rightPts = generateTrace(sweepLo, sweepHi, envN, rightTip);
-
-  // Fill swept region: outline is rightTrace → curve back → leftTrace → curve back
-  // Actually the swept region is bounded by:
-  // - The left tip trace (going from a's left tip to b's left tip)
-  // - The bottom of the curve between those
-  // - The right tip trace
-  // - The top of the curve
-  // It's complex, let's shade it by columns
-
-  // Shade the swept area column by column
-  const colSteps = 500;
   const allTipsXmin = Math.min(leftTip(sweepLo).x, leftTip(sweepHi).x);
   const allTipsXmax = Math.max(rightTip(sweepLo).x, rightTip(sweepHi).x);
-  const colXlo = allTipsXmin - 0.2;
-  const colXhi = allTipsXmax + 0.2;
+  const colXlo = allTipsXmin - 0.15;
+  const colXhi = allTipsXmax + 0.15;
   const colDx = (colXhi - colXlo) / colSteps;
+  const sdx0 = (sweepHi - sweepLo) / sampleN;
 
+  // Solid fill for the ribbon — use two passes for a nice layered look
+  // Pass 1: broader semi-transparent fill
+  ctx.fillStyle = 'rgba(240, 136, 62, 0.22)';
   for (let ci = 0; ci < colSteps; ci++) {
-    const cx = colXlo + ci * colDx;
+    const cx = colXlo + (ci + 0.5) * colDx;
     let cyMin = Infinity, cyMax = -Infinity;
     let found = false;
 
-    // Sample x0 across sweep range
-    const sampleN = 200;
-    const sdx0 = (sweepHi - sweepLo) / sampleN;
     for (let si = 0; si <= sampleN; si++) {
       const sx0 = sweepLo + si * sdx0;
       const s = Math.sqrt(1 + sx0 * sx0);
@@ -297,14 +264,66 @@ function draw() {
     }
 
     if (found && cyMax > cyMin) {
-      const sxL = toSX(cx);
-      const sxR = toSX(cx + colDx);
+      const sxL = toSX(cx - colDx * 0.5);
+      const sxR = toSX(cx + colDx * 0.5);
       const syTop = toSY(cyMax);
       const syBot = toSY(cyMin);
-      ctx.fillStyle = 'rgba(240, 136, 62, 0.12)';
-      ctx.fillRect(sxL, syTop, sxR - sxL, syBot - syTop);
+      ctx.fillRect(sxL, syTop, sxR - sxL + 1, syBot - syTop);
     }
   }
+
+  // Pass 2: brighter border highlight along the ribbon edge
+  ctx.fillStyle = 'rgba(240, 136, 62, 0.12)';
+  for (let ci = 0; ci < colSteps; ci++) {
+    const cx = colXlo + (ci + 0.5) * colDx;
+    let cyMin = Infinity, cyMax = -Infinity;
+    let found = false;
+
+    for (let si = 0; si <= sampleN; si++) {
+      const sx0 = sweepLo + si * sdx0;
+      const s = Math.sqrt(1 + sx0 * sx0);
+      const reach = 1 / s;
+      if (cx >= sx0 - reach && cx <= sx0 + reach) {
+        const ty = sx0 * (cx - sx0) + sx0 * sx0 / 2;
+        if (ty < cyMin) cyMin = ty;
+        if (ty > cyMax) cyMax = ty;
+        found = true;
+      }
+    }
+
+    if (found && cyMax > cyMin) {
+      const sxL = toSX(cx - colDx * 0.5);
+      const sxR = toSX(cx + colDx * 0.5);
+      // Draw thin highlight strips at the top and bottom edges
+      const syTop = toSY(cyMax);
+      const syBot = toSY(cyMin);
+      const edgeH = Math.max(1.5, (syBot - syTop) * 0.08);
+      ctx.fillRect(sxL, syTop, sxR - sxL + 1, edgeH);
+      ctx.fillRect(sxL, syBot - edgeH, sxR - sxL + 1, edgeH);
+    }
+  }
+
+  // Ghost tangent lines — visible
+  const ghostN = 60;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= ghostN; i++) {
+    const gx0 = sweepLo + (sweepHi - sweepLo) * i / ghostN;
+    const lt = leftTip(gx0);
+    const rt = rightTip(gx0);
+    // Fade: brighter near center
+    const t = Math.abs(i / ghostN - 0.5) * 2; // 0 at center, 1 at edges
+    const alpha = 0.06 + 0.12 * (1 - t);
+    ctx.strokeStyle = `rgba(240, 136, 62, ${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(toSX(lt.x), toSY(lt.y));
+    ctx.lineTo(toSX(rt.x), toSY(rt.y));
+    ctx.stroke();
+  }
+
+  // Tip traces
+  const envN = 300;
+  const leftPts = generateTrace(sweepLo, sweepHi, envN, leftTip);
+  const rightPts = generateTrace(sweepLo, sweepHi, envN, rightTip);
 
   // Left tip trace
   ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.8;
@@ -336,6 +355,14 @@ function draw() {
   }
   ctx.stroke();
   ctx.shadowBlur = 0;
+
+  // Sweep bound markers on the curve
+  [sweepLo, sweepHi].forEach(bx => {
+    ctx.beginPath();
+    ctx.arc(toSX(bx), toSY(F(bx)), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#58a6ff'; ctx.fill();
+    ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 1.5; ctx.stroke();
+  });
 
   // Current tangent line (fixed length)
   const lt = leftTip(x0);
@@ -382,7 +409,7 @@ function draw() {
   ctx.textAlign = 'center';
   ctx.fillText(`slope = ${x0.toFixed(2)}  ·  Δx = ±${(1/s0).toFixed(3)}`, toSX(x0), toSY(F(x0)) - 18);
 
-  // Labels
+  // Curve label
   ctx.font = 'italic 12px "Source Serif 4", serif'; ctx.textAlign = 'left';
   const lx = xMax - (xMax - xMin) * 0.08;
   const lsx = toSX(lx);
@@ -391,8 +418,8 @@ function draw() {
     ctx.fillText('F(x) = x²/2', lsx + 4, toSY(F(lx)) - 8);
   }
 
-  // Compute area numerically
-  const sweptArea = computeSweptArea(sweepLo, sweepHi, 600);
+  // Compute area numerically (lower resolution for display responsiveness)
+  const sweptArea = computeSweptArea(sweepLo, sweepHi, 400);
 
   // Update displays
   valAEl.textContent = a.toFixed(2);
@@ -401,13 +428,6 @@ function draw() {
 
   areaDisplayEl.textContent = `Swept area ≈ ${sweptArea.toFixed(4)}`;
 
-  // The x-extent at x0 is 1/sqrt(1+x0^2) each way
-  // The tangent at fixed x: y(x0) = x*x0 - x0^2/2 → max at x0=x → y=x^2/2 = F(x)
-  // Width of ribbon at x0: 2/sqrt(1+x0^2)
-  // The analytical area of the ribbon integrand is more subtle since the
-  // vertical extent varies. Show the numerical result.
-
-  // Analytical note: integral of 1/(1+x0^2) from a to b = arctan(b) - arctan(a)
   const analyticalEstimate = Math.atan(sweepHi) - Math.atan(sweepLo);
   mathNoteEl.innerHTML =
     `At x₀, tangent Δx = ±1/√(1+x₀²) · As slope grows, x-reach shrinks<br>` +
@@ -415,14 +435,20 @@ function draw() {
 
   statsRowEl.innerHTML =
     `<div class="stat">x₀-reach: <span style="color:#f0883e;">±1/√(1+x₀²) = ±${(1/s0).toFixed(3)}</span></div>` +
-    `<div class="stat">Sweep: <span style="color:#58a6ff;">[${sweepLo.toFixed(1)}, ${sweepHi.toFixed(1)}]</span></div>`;
+    `<div class="stat">Sweep: <span style="color:#58a6ff;">[${sweepLo.toFixed(1)}, ${sweepHi.toFixed(1)}]</span></div>` +
+    `<div class="stat">Area: <span style="color:#7ee787;">${sweptArea.toFixed(4)}</span></div>`;
+}
+
+function requestDraw() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(() => { rafId = null; draw(); });
 }
 
 draw();
 
-sliderA.addEventListener('input', draw);
-sliderB.addEventListener('input', draw);
-sliderX0.addEventListener('input', draw);
+sliderA.addEventListener('input', requestDraw);
+sliderB.addEventListener('input', requestDraw);
+sliderX0.addEventListener('input', requestDraw);
 
 sliderSpeed.addEventListener('input', () => {
   const speed = parseFloat(sliderSpeed.value);
@@ -451,32 +477,58 @@ function animate(ts) {
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const mx = (e.clientX - rect.left) * (CSS_W / rect.width);
+  const my = (e.clientY - rect.top) * (CSS_H / rect.height);
   const mathX = toMX(mx), mathY = toMY(my);
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
   scale = Math.max(5, Math.min(2000, scale * factor));
-  viewCenterX = mathX - (mx - canvas.width / 2) / scale;
-  viewCenterY = mathY + (my - canvas.height / 2) / scale;
-  draw();
+  viewCenterX = mathX - (mx - CSS_W / 2) / scale;
+  viewCenterY = mathY + (my - CSS_H / 2) / scale;
+  requestDraw();
 }, { passive: false });
 
 canvas.addEventListener('mousedown', e => {
   isDragging = true;
   const rect = canvas.getBoundingClientRect();
-  dragStartX = e.clientX - rect.left;
-  dragStartY = e.clientY - rect.top;
+  dragStartX = (e.clientX - rect.left) * (CSS_W / rect.width);
+  dragStartY = (e.clientY - rect.top) * (CSS_H / rect.height);
   dragViewX = viewCenterX; dragViewY = viewCenterY;
   canvas.style.cursor = 'grabbing';
 });
 canvas.addEventListener('mousemove', e => {
   if (!isDragging) return;
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const mx = (e.clientX - rect.left) * (CSS_W / rect.width);
+  const my = (e.clientY - rect.top) * (CSS_H / rect.height);
   viewCenterX = dragViewX - (mx - dragStartX) / scale;
   viewCenterY = dragViewY + (my - dragStartY) / scale;
-  draw();
+  requestDraw();
 });
 window.addEventListener('mouseup', () => { isDragging = false; canvas.style.cursor = 'crosshair'; });
+
+// Touch support for mobile
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches[0];
+    dragStartX = (t.clientX - rect.left) * (CSS_W / rect.width);
+    dragStartY = (t.clientY - rect.top) * (CSS_H / rect.height);
+    dragViewX = viewCenterX; dragViewY = viewCenterY;
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (!isDragging || e.touches.length !== 1) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  const mx = (t.clientX - rect.left) * (CSS_W / rect.width);
+  const my = (t.clientY - rect.top) * (CSS_H / rect.height);
+  viewCenterX = dragViewX - (mx - dragStartX) / scale;
+  viewCenterY = dragViewY + (my - dragStartY) / scale;
+  requestDraw();
+}, { passive: false });
+canvas.addEventListener('touchend', () => { isDragging = false; });
 </script>
 </body>
 </html>
