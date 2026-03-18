@@ -18,7 +18,7 @@ The result is classical in its ingredients but is presented here as a self-conta
 
 ## Why $f(x) = x^2$?
 
-Occam's razor. The parabola $y = x^2$ is the simplest polynomial whose tangent line rotates: it has non-zero curvature everywhere, its derivative $f'(x) = 2x$ covers the entire real line, and its curvature $\kappa$ is integrable over $\mathbb{R}$. No simpler function suffices — a linear function has constant slope and sweeps no angle at all; higher-degree polynomials introduce unnecessary complexity. The parabola is the minimal construction that produces a full half-turn.
+Occam's razor. Start with the simplest non-constant function there is: $f(x) = x$. Its antiderivative is $\frac{x^2}{2}$, and rescaling gives $x^2$ — the simplest polynomial whose tangent line rotates. The parabola is not chosen; it is *derived*. A linear function has constant slope and sweeps no angle at all. The moment you integrate $f(x) = x$ — the minimal act of accumulation — you obtain a curve with non-zero curvature everywhere, whose derivative covers the entire real line, and whose total curvature is finite. No simpler starting point produces a full half-turn.
 
 ---
 
